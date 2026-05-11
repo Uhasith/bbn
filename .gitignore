@@ -28,5 +28,19 @@ server/node_modules
 client/.env
 server/.env
 
+# Ignore SQLite database files
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sqlite-journal
+*.sqlite3-journal
+*.db-wal
+*.sqlite-wal
+*.sqlite3-wal
+*.db-shm
+*.sqlite-shm
+*.sqlite3-shm
+
 # Ignore Git-related files
 .git/
