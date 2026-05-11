@@ -322,12 +322,7 @@ router.post("/report/generate", async (req, res) => {
   try {
     const { testRunId, testerName, startTime, endTime } = req.body;
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      throw new Error(
-        "Email configuration is missing. Please check .env file."
-      );
-    }
-
+    // Generate the PDF report
     const zipBuffer = await generatePDFReport(
       testRunId,
       testerName,
@@ -335,36 +330,53 @@ router.post("/report/generate", async (req, res) => {
       endTime
     );
 
-    // Get report email from settings
-    const settings = await db.getAsync(
-      "SELECT report_email FROM settings LIMIT 1"
-    );
-    const reportEmail = settings.report_email;
+    // Try to send email, but don't fail if it doesn't work
+    let emailSent = false;
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        // Get report email from settings
+        const settings = await db.getAsync(
+          "SELECT report_email FROM settings LIMIT 1"
+        );
+        const reportEmail = settings.report_email;
 
-    // Configure email
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+        // Configure email
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+
+        // Send email with zip attachment
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: reportEmail,
+          subject: `Test Report: ${testerName}`,
+          text: `Please find attached the test report for ${testerName}.`,
+          attachments: [
+            {
+              filename: "test_report.zip",
+              content: zipBuffer,
+            },
+          ],
+        });
+        emailSent = true;
+      } catch (emailError) {
+        console.error("Error sending email (report still generated):", emailError.message);
+      }
+    } else {
+      console.warn("Email credentials not configured. Report generated but not sent.");
+    }
+
+    res.json({ 
+      success: true, 
+      emailSent,
+      message: emailSent 
+        ? "Report generated and sent successfully" 
+        : "Report generated successfully (email not configured)"
     });
-
-    // Send email with zip attachment
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: reportEmail,
-      subject: `Test Report: ${testerName}`,
-      text: `Please find attached the test report for ${testerName}.`,
-      attachments: [
-        {
-          filename: "test_report.zip",
-          content: zipBuffer,
-        },
-      ],
-    });
-
-    res.json({ success: true });
   } catch (error) {
     console.error("Error generating report:", error);
     res

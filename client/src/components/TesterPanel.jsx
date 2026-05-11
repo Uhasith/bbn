@@ -171,13 +171,20 @@ const TesterPanel = () => {
         throw new Error("Failed to generate report");
       }
 
+      const reportData = await reportResponse.json();
+      
       setShowQuestionnaire(false);
       localStorage.removeItem("testRun");
       setTestRunId(null);
       setCurrentIndex(0);
       setShowStartDialog(true);
       setTesterName("");
-      toast.success("Test session completed! Report has been sent.");
+      
+      if (reportData.emailSent) {
+        toast.success("Test session completed! Report has been sent via email.");
+      } else {
+        toast.success("Test session completed! Report generated successfully.");
+      }
     } catch (error) {
       console.error("Error:", error);
       toast.error(error.message || "An error occurred");
