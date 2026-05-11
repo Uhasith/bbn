@@ -49,6 +49,18 @@ router.post("/", auth, async (req, res) => {
 router.post("/:id/response", async (req, res) => {
   try {
     const { approved, remark, testNumber, testRunId, testerName } = req.body;
+    const smtpUser = process.env.EMAIL_USER || process.env.MAIL_USERNAME;
+    const smtpPass = process.env.EMAIL_PASS || process.env.MAIL_PASSWORD;
+    const smtpHost = process.env.EMAIL_HOST || process.env.MAIL_HOST;
+    const smtpPort = parseInt(
+      process.env.EMAIL_PORT || process.env.MAIL_PORT || "587",
+      10
+    );
+    const smtpEncryption = (
+      process.env.EMAIL_ENCRYPTION ||
+      process.env.MAIL_ENCRYPTION ||
+      ""
+    ).toLowerCase();
     const instructionId = req.params.id;
     const { title: testTitle } = await db.getAsync(
       "SELECT title FROM instructions WHERE id = ?",
@@ -61,30 +73,46 @@ router.post("/:id/response", async (req, res) => {
       );
       const rejectionEmail = settings.rejection_email;
 
-      // Send email to notify admin
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
+      if (smtpUser && smtpPass) {
+        // Send email to notify admin
+        const transportConfig = smtpHost
+          ? {
+              host: smtpHost,
+              port: smtpPort,
+              secure: smtpEncryption === "ssl" || smtpPort === 465,
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+          : {
+              service: "gmail",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            };
 
-      const mailOptions = {
-        from:
-          '"Test Instruction Management System" <' +
-          process.env.EMAIL_USER +
-          ">",
-        to: rejectionEmail,
-        subject: `Test Rejected for ${testerName}`,
-        html: `
-          <p>A test was rejected for ${testerName} with the following remark:</p>
-          <blockquote>${remark}</blockquote>
-          <p>The test title is: ${testTitle} and the test number is: ${testNumber}</p>
-        `,
-      };
+        const transporter = nodemailer.createTransport(transportConfig);
 
-      await transporter.sendMail(mailOptions);
+        const mailOptions = {
+          from:
+            '"Test Instruction Management System" <' +
+            (process.env.EMAIL_FROM || process.env.MAIL_FROM_ADDRESS || smtpUser) +
+            ">",
+          to: rejectionEmail,
+          subject: `Test Rejected for ${testerName}`,
+          html: `
+            <p>A test was rejected for ${testerName} with the following remark:</p>
+            <blockquote>${remark}</blockquote>
+            <p>The test title is: ${testTitle} and the test number is: ${testNumber}</p>
+          `,
+        };
+
+        await transporter.sendMail(mailOptions);
+      } else {
+        console.warn("SMTP credentials are not configured. Skipping rejection notification email.");
+      }
     }
 
     await db.runAsync(

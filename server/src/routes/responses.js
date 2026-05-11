@@ -321,6 +321,18 @@ router.get("/report/:testRunId", async (req, res) => {
 router.post("/report/generate", async (req, res) => {
   try {
     const { testRunId, testerName, startTime, endTime } = req.body;
+    const smtpUser = process.env.EMAIL_USER || process.env.MAIL_USERNAME;
+    const smtpPass = process.env.EMAIL_PASS || process.env.MAIL_PASSWORD;
+    const smtpHost = process.env.EMAIL_HOST || process.env.MAIL_HOST;
+    const smtpPort = parseInt(
+      process.env.EMAIL_PORT || process.env.MAIL_PORT || "587",
+      10
+    );
+    const smtpEncryption = (
+      process.env.EMAIL_ENCRYPTION ||
+      process.env.MAIL_ENCRYPTION ||
+      ""
+    ).toLowerCase();
 
     // Generate the PDF report
     const zipBuffer = await generatePDFReport(
@@ -332,7 +344,7 @@ router.post("/report/generate", async (req, res) => {
 
     // Try to send email, but don't fail if it doesn't work
     let emailSent = false;
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (smtpUser && smtpPass) {
       try {
         // Get report email from settings
         const settings = await db.getAsync(
@@ -340,18 +352,30 @@ router.post("/report/generate", async (req, res) => {
         );
         const reportEmail = settings.report_email;
 
-        // Configure email
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-        });
+        // Configure email transporter
+        const transportConfig = smtpHost
+          ? {
+              host: smtpHost,
+              port: smtpPort,
+              secure: smtpEncryption === "ssl" || smtpPort === 465,
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            }
+          : {
+              service: "gmail",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass,
+              },
+            };
+        
+        const transporter = nodemailer.createTransport(transportConfig);
 
         // Send email with zip attachment
         await transporter.sendMail({
-          from: process.env.EMAIL_USER,
+          from: process.env.EMAIL_FROM || process.env.MAIL_FROM_ADDRESS || smtpUser,
           to: reportEmail,
           subject: `Test Report: ${testerName}`,
           text: `Please find attached the test report for ${testerName}.`,
